@@ -2,71 +2,85 @@ import os
 import pandas as pd
 
 # --- CONFIGURE AQUI ---
-# Confirme se este é o caminho correto para a pasta principal onde os
-# resultados individuais de cada repositório foram salvos.
+# Confirme se este é o caminho para a pasta principal onde os
+# seus ficheiros CSV estão salvos.
 PATH_TO_OUTPUT_FOLDER = r"C:\Users\TI04\ResultadosCK"
+
+# Nomes dos ficheiros de entrada
+CK_SUMMARY_FILE = "repository_summary_metrics.csv"
+METADATA_FILE = "metadata.csv"
+
+# Nome do ficheiro de saída final
+FINAL_OUTPUT_FILE = "final_analysis_dataset.csv"
 # --- FIM DA CONFIGURAÇÃO ---
 
 
-def consolidate_all_results():
+def merge_datasets_with_fix():
     """
-    Procura recursivamente por todos os ficheiros 'class.csv' na pasta de saída,
-    junta todos os dados e salva num único ficheiro consolidado.
+    Junta os datasets corrigindo a incompatibilidade de nomes de repositório
+    e lidando com erros de formatação no arquivo de metadados.
     """
-    all_metrics_dfs = []
-    
-    print(f"Iniciando a busca por ficheiros 'class.csv' dentro de: '{PATH_TO_OUTPUT_FOLDER}'...")
+    ck_file_path = os.path.join(PATH_TO_OUTPUT_FOLDER, CK_SUMMARY_FILE)
+    metadata_file_path = os.path.join(PATH_TO_OUTPUT_FOLDER, METADATA_FILE)
 
-    # Verifica se a pasta de saída principal existe
-    if not os.path.exists(PATH_TO_OUTPUT_FOLDER):
-        print(f"ERRO: O diretório especificado não foi encontrado: '{PATH_TO_OUTPUT_FOLDER}'")
-        print("Por favor, verifique o caminho na configuração do script.")
+    print("Iniciando a junção dos datasets com correção de nomes...")
+
+    # Validação dos ficheiros de entrada
+    if not os.path.exists(ck_file_path) or not os.path.exists(metadata_file_path):
+        print(f"ERRO: Verifique se os arquivos '{CK_SUMMARY_FILE}' e '{METADATA_FILE}' existem na pasta.")
         return
 
-    # Procura recursivamente por todos os ficheiros 'class.csv'
-    for root, dirs, files in os.walk(PATH_TO_OUTPUT_FOLDER):
-        if "class.csv" in files:
-            class_metrics_file = os.path.join(root, "class.csv")
-            # O nome do repositório é o nome da pasta onde o 'class.csv' foi encontrado
-            repo_name = os.path.basename(root)
+    try:
+        # Carregar os datasets
+        print("Lendo os arquivos...")
+        ck_df = pd.read_csv(ck_file_path)
 
-            try:
-                df = pd.read_csv(class_metrics_file)
-                
-                # Se o ficheiro estiver vazio, pula para o próximo
-                if df.empty:
-                    print(f"  - Aviso: Ficheiro 'class.csv' para '{repo_name}' está vazio. A ignorar.")
-                    continue
-                
-                df['repository'] = repo_name
-                all_metrics_dfs.append(df)
-                print(f"  - Encontrado e processado: {repo_name} ({len(df)} linhas)")
+        # --- CORREÇÃO DEFINITIVA PARA LEITURA APLICADA AQUI ---
+        # Adicionado on_bad_lines='warn' para avisar sobre linhas mal formatadas em vez de falhar.
+        # Mantido engine='python' para maior flexibilidade.
+        print(f"Lendo metadados de '{METADATA_FILE}' (com tratamento de erros)...")
+        metadata_df = pd.read_csv(metadata_file_path, engine='python', on_bad_lines='warn')
 
-            except Exception as e:
-                print(f"  - ERRO: Não foi possível ler ou processar o ficheiro '{class_metrics_file}'. Erro: {e}")
+        # --- CORREÇÃO DE NOMES ---
+        # Cria uma nova coluna com o nome simples do repositório para a junção.
+        print("Padronizando os nomes dos repositórios para a junção...")
+        metadata_df['repo_name_simple'] = metadata_df['nameWithOwner'].str.split('/', expand=True)[1]
 
-    # Se encontrámos algum resultado, junta tudo e salva
-    if all_metrics_dfs:
-        print(f"\nConsolidando os dados de {len(all_metrics_dfs)} repositórios...")
-        
-        final_df = pd.concat(all_metrics_dfs, ignore_index=True)
-        final_output_path = os.path.join(PATH_TO_OUTPUT_FOLDER, "consolidated_metrics.csv")
-        
+        # --- Realizar a junção (merge) ---
+        print("Realizando a junção dos dados...")
+        final_df = pd.merge(
+            left=ck_df,
+            right=metadata_df,
+            left_on='repository',
+            right_on='repo_name_simple',
+            how='inner'
+        )
+
+        # Limpeza do DataFrame final
+        if 'repo_name_simple' in final_df.columns:
+            final_df = final_df.drop(columns=['repo_name_simple'])
+        if 'nameWithOwner' in final_df.columns:
+            final_df = final_df.rename(columns={'nameWithOwner': 'repository_full_name'})
+
+        # Salva o dataset final
+        final_output_path = os.path.join(PATH_TO_OUTPUT_FOLDER, FINAL_OUTPUT_FILE)
         final_df.to_csv(final_output_path, index=False)
-        
+
         print("\n" + "="*80)
         print("SUCESSO!")
-        print(f"Os resultados foram consolidados em:")
+        print(f"O dataset final para análise foi salvo em:")
         print(f"'{final_output_path}'")
-        print(f"Total de classes analisadas: {len(final_df)}")
+        
+        if len(final_df) > 0:
+            print(f"Foram unificados com sucesso dados de {len(final_df)} repositórios.")
+        else:
+            print("AVISO: Nenhum repositório foi unificado. Verifique se os nomes nos arquivos CSV correspondem.")
+        
         print("="*80)
-    else:
-        print("\n" + "="*80)
-        print("AVISO: Nenhum resultado encontrado para consolidar.")
-        print("Verifique se os ficheiros 'class.csv' realmente existem dentro das subpastas")
-        print(f"em '{PATH_TO_OUTPUT_FOLDER}'.")
-        print("="*80)
+
+    except Exception as e:
+        print(f"Ocorreu um erro inesperado durante o processo: {e}")
 
 
 if __name__ == "__main__":
-    consolidate_all_results()
+    merge_datasets_with_fix()
