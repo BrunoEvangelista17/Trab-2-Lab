@@ -7,7 +7,7 @@ import pandas as pd
 PATH_TO_OUTPUT_FOLDER = r"C:\Users\TI04\ResultadosCK"
 
 # Nomes dos ficheiros de entrada
-CK_SUMMARY_FILE = "repository_summary_metrics.csv"
+CK_SUMMARY_FILE = "summary_metrics_por_repositorio.csv"
 METADATA_FILE = "metadata.csv"
 
 # Nome do ficheiro de saída final
